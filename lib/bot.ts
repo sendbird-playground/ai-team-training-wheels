@@ -8,8 +8,8 @@ export const chat = new Chat({
     slack: createSlackAdapter(),
   },
   state: createRedisState({
-    // Upstash: use the standard Redis TLS URL (rediss://default:TOKEN@host.upstash.io:6379)
-    // not the REST API URL
-    url: process.env.UPSTASH_REDIS_URL!,
+    // Vercel KV provides KV_URL as a standard Redis TLS URL
+    // Set it up at vercel.com/dashboard → Storage → Create KV Store
+    url: process.env.KV_URL!,
   }),
 });
