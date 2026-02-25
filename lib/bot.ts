@@ -8,6 +8,7 @@ import type { Thread, Message } from 'chat';
 import { readFileSync } from 'fs';
 import path from 'path';
 import { createNotionMCP, createLinearMCP } from '@/lib/mcp';
+import { fetchIssue, postComment, setInProgress } from '@/lib/linear';
 
 const PO_PROMPT = readFileSync(
   path.join(process.cwd(), 'lib/prompts/po-system.md'),
@@ -86,7 +87,67 @@ export function getChat(): Chat {
       if (!isAllowed(thread, message)) return;
       await runAgent(thread);
     });
+
+    _chat.onSlashCommand('/ship', async (event) => {
+      const identifier = event.text.trim().toUpperCase();
+      if (!identifier) {
+        await event.channel.post('Usage: `/ship SEN-XX`');
+        return;
+      }
+
+      await event.channel.post(`Shipping *${identifier}*... fetching issue details.`);
+
+      let issue;
+      try {
+        issue = await fetchIssue(identifier);
+      } catch (err) {
+        await event.channel.post(`Failed to fetch ${identifier} from Linear. Make sure LINEAR_API_KEY is set.`);
+        console.error('[ship] fetchIssue error:', err);
+        return;
+      }
+
+      if (!issue) {
+        await event.channel.post(`Issue *${identifier}* not found in Linear.`);
+        return;
+      }
+
+      // Build a rich Codex comment from the issue title + description
+      const codexComment = buildCodexComment(issue.title, issue.description);
+
+      try {
+        await Promise.all([
+          postComment(issue.id, codexComment),
+          setInProgress(issue.id),
+        ]);
+      } catch (err) {
+        await event.channel.post(`Failed to update Linear issue. Check bot permissions.`);
+        console.error('[ship] Linear update error:', err);
+        return;
+      }
+
+      await event.channel.post(
+        `:rocket: *${issue.identifier}* is in progress!\n` +
+        `Codex has been assigned the task. I'll notify you when a PR is up.\n` +
+        `<${issue.url}|View in Linear>`
+      );
+    });
   }
 
   return _chat;
+}
+
+function buildCodexComment(title: string, description: string | null | undefined): string {
+  const lines = [
+    `@Codex Please implement the following:`,
+    ``,
+    `**${title}**`,
+  ];
+  if (description) {
+    lines.push(``, description.trim());
+  }
+  lines.push(
+    ``,
+    `When done, open a pull request and post the PR link as a comment on this issue.`
+  );
+  return lines.join('\n');
 }
