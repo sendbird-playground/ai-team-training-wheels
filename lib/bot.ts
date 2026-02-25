@@ -73,7 +73,7 @@ export function getChat(): Chat {
     _chat = new Chat({
       userName: 'po-agent',
       adapters: { slack: createSlackAdapter() },
-      state: createRedisState({ url: process.env.KV_URL! }),
+      state: createRedisState({ url: process.env.REDIS_URL! }),
     });
 
     _chat.onNewMention(async (thread, message) => {
