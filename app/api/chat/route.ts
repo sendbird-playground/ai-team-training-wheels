@@ -2,7 +2,7 @@ import { after } from 'next/server';
 import { anthropic } from '@ai-sdk/anthropic';
 import { streamText, stepCountIs } from 'ai';
 import type { ModelMessage } from 'ai';
-import type { Thread } from 'chat';
+import type { Thread, Message } from 'chat';
 import { readFileSync } from 'fs';
 import path from 'path';
 import { chat } from '@/lib/bot';
@@ -12,6 +12,16 @@ const PO_PROMPT = readFileSync(
   path.join(process.cwd(), 'lib/prompts/po-system.md'),
   'utf8'
 );
+
+const ALLOWED_CHANNEL_ID = process.env.SLACK_ALLOWED_CHANNEL_ID;
+
+function isAllowed(thread: Thread, message: Message): boolean {
+  if (ALLOWED_CHANNEL_ID && thread.channelId !== ALLOWED_CHANNEL_ID) {
+    console.warn(`[po-agent] ignored message from unauthorized channel: ${thread.channelId}`);
+    return false;
+  }
+  return true;
+}
 
 async function buildHistory(thread: Thread): Promise<ModelMessage[]> {
   const messages: ModelMessage[] = [];
@@ -54,12 +64,14 @@ async function runAgent(thread: Thread): Promise<void> {
   }
 }
 
-chat.onNewMention(async (thread) => {
+chat.onNewMention(async (thread, message) => {
+  if (!isAllowed(thread, message)) return;
   await thread.subscribe();
   await runAgent(thread);
 });
 
-chat.onSubscribedMessage(async (thread) => {
+chat.onSubscribedMessage(async (thread, message) => {
+  if (!isAllowed(thread, message)) return;
   await runAgent(thread);
 });
 
